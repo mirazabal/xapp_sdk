@@ -18,3 +18,10 @@ message(STATUS "Selected xApp DB : ${XAPP_DB}")
 include_directories(include)
 add_subdirectory(src)
 
+# Remember to 
+# sudo make install && ldconfig
+install(FILES "${CMAKE_SOURCE_DIR}/lib/libe42_xapp_shared.so" DESTINATION /usr/local/lib/)
+
+file(GLOB_RECURSE CONF_FILES "${CMAKE_SOURCE_DIR}/conf/*.conf")
+install(FILES ${CONF_FILES} DESTINATION /usr/local/etc/flexric)
+
