@@ -16,7 +16,11 @@ message(STATUS "Selected xApp DB : ${XAPP_DB}")
 
 # include src files
 include_directories(include)
+include_directories(src/usr/c)
+include_directories(src/dev/c)
+
 add_subdirectory(src)
+add_subdirectory(labs)
 
 # Remember to 
 # sudo make install && ldconfig

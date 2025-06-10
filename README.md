@@ -50,6 +50,10 @@ cmake -D{your options} ..
 
 make -j
 
+sudo make install
+
+sudo ldconfig
+
 ```
 
 ## Run the xApp (i.e helloworld in c)
