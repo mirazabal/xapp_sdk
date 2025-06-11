@@ -30,7 +30,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <signal.h>
+#include <poll.h>
 
+static uint8_t pr_slice_0_lst[9] = {90, 80, 70, 60, 50, 40, 30, 20, 10};
 static bool exit_flag = false;
 static void sigint_handler(int sig)
 {
@@ -59,41 +61,16 @@ void fill_add_mod_slice(slice_conf_t* add)
 {
   assert(add != NULL);
 
-  uint32_t dl_len_slices = 0;
-  uint32_t dl_slice_id[] = {0, 2, 5};
-  char* dl_slice_label[] = {"s1", "s2", "s3"};
-  /// NVS/EDF slice are only supported by OAI eNB ///
-  //slice_algorithm_e dl_type = SLICE_ALG_SM_V0_STATIC;
-  //slice_algorithm_e dl_type = SLICE_ALG_SM_V0_NVS;
-  //slice_algorithm_e dl_type = SLICE_ALG_SM_V0_EDF;
-  //slice_algorithm_e dl_type = SLICE_ALG_SM_V0_EEDF;
+  uint32_t dl_len_slices = 2;
+  uint32_t dl_slice_id[] = {0, 1};
+  char* dl_slice_label[] = {"s1", "s2"};
   slice_algorithm_e dl_type = SLICE_ALG_SM_V0_PR;
   //slice_algorithm_e dl_type = SLICE_ALG_SM_V0_NONE;
   assert(dl_type >= 0);
-  if (dl_type != 0)
-    dl_len_slices = 3;
-  else
-    printf("RESET DL SLICE, algo = NONE\n");
 
   char dl_name[10];
   size_t len_dl_name;
   switch (dl_type){
-    case SLICE_ALG_SM_V0_STATIC:
-      strcpy(dl_name, "STATIC");
-      len_dl_name = strlen("STATIC");
-      break;
-    case SLICE_ALG_SM_V0_NVS:
-      strcpy(dl_name, "NVS");
-      len_dl_name = strlen("NVS");
-      break;
-    case SLICE_ALG_SM_V0_EDF:
-      strcpy(dl_name, "EDF");
-      len_dl_name = strlen("EDF");
-      break;
-    case SLICE_ALG_SM_V0_EEDF:
-      strcpy(dl_name, "EEDF");
-      len_dl_name = strlen("EEDF");
-      break;
     case SLICE_ALG_SM_V0_PR:
       strcpy(dl_name, "PR");
       len_dl_name = strlen("PR");
@@ -105,26 +82,10 @@ void fill_add_mod_slice(slice_conf_t* add)
       break;
   }
   
-  /// SET DL STATIC SLICE PARAMETER ///
-  uint32_t set_st_low_high_p[] = {0, 3, 4, 7, 8, 12};
-  /// SET DL NVS SLICE PARAMETER///
-  nvs_slice_conf_e nvs_conf[] = {SLICE_SM_NVS_V0_RATE, SLICE_SM_NVS_V0_CAPACITY, SLICE_SM_NVS_V0_RATE};
-  float mbps_rsvd = 2;
-  float mbps_ref = 10.0;
-  float pct_rsvd = 0.5;
-  /// SET DL EDF SLICE PARAMETER///
-  int deadline[] = {20, 20, 40};
-  int guaranteed_prbs[] = {10, 4, 10};
-  /// SET DL EEDF SLICE PARAMETER///
-  eedf_slice_conf_e eedf_conf[] = {SLICE_SM_EEDF_V0_STATIC, SLICE_SM_EEDF_V0_STATIC, SLICE_SM_EEDF_V0_RATE};
-  eedf_static_type_t eedf_static_type[] = {EEDF_STATIC_HARD, EEDF_STATIC_SOFT};
-  int16_t eedf_reserved_prbs = 20;
-  int32_t eedf_deadline = 10;
-  int32_t eedf_guaranteed_rate = 40;
   /// SET DL PR SLICE PARAMETER///
-  int pr_max[] = {20, 40, 100};
-  int pr_min[] = {20, 20, 0};
-  int pr_ded[] = {0, 20, 0};
+  uint32_t pr_max[] = {pr_slice_0_lst[0], 100 - pr_slice_0_lst[0]};
+  uint32_t pr_min[] = {pr_slice_0_lst[0], 100 - pr_slice_0_lst[0]};
+  uint32_t pr_ded[] = {pr_slice_0_lst[0], 100 - pr_slice_0_lst[0]};
 
   /// DL SLICE CONTROL INFO ///
   ul_dl_slice_conf_t* add_dl = &add->dl;
@@ -156,68 +117,18 @@ void fill_add_mod_slice(slice_conf_t* add)
     assert(s->sched != NULL && "Memory exhausted");
     memcpy(s->sched, sched_str, s->len_sched);
 
-    if (dl_type == SLICE_ALG_SM_V0_STATIC) {
-      s->params.type = SLICE_ALG_SM_V0_STATIC;
-      s->params.u.sta.pos_high = set_st_low_high_p[i * 2 + 1];
-      s->params.u.sta.pos_low = set_st_low_high_p[i * 2];
-      printf("ADD STATIC DL SLICE: id %u, pos_low %u, pos_high %u\n", s->id, s->params.u.sta.pos_low, s->params.u.sta.pos_high);
-    } else if (dl_type == SLICE_ALG_SM_V0_NVS) {
-      s->params.type = SLICE_ALG_SM_V0_NVS;
-      if (nvs_conf[i] == SLICE_SM_NVS_V0_RATE) {
-        s->params.u.nvs.conf = SLICE_SM_NVS_V0_RATE;
-        s->params.u.nvs.u.rate.u1.mbps_required = mbps_rsvd;
-        s->params.u.nvs.u.rate.u2.mbps_reference = mbps_ref;
-        printf("ADD NVS DL SLICE: id %u, conf %d(rate), mbps_required %f, mbps_reference %f\n", s->id, s->params.u.nvs.conf, s->params.u.nvs.u.rate.u1.mbps_required, s->params.u.nvs.u.rate.u2.mbps_reference);
-      } else if (nvs_conf[i] == SLICE_SM_NVS_V0_CAPACITY) {
-        s->params.u.nvs.conf = SLICE_SM_NVS_V0_CAPACITY;
-        s->params.u.nvs.u.capacity.u.pct_reserved = pct_rsvd;
-        printf("ADD NVS DL SLICE: id %u, conf %d(capacity), pct_reserved %f\n", s->id, s->params.u.nvs.conf, s->params.u.nvs.u.capacity.u.pct_reserved);
-      } else {
-        assert(0 != 0 && "Unkown NVS conf type\n");
-      }
-    } else if (dl_type == SLICE_ALG_SM_V0_EDF) {
-      s->params.type = SLICE_ALG_SM_V0_EDF;
-      s->params.u.edf.deadline = deadline[i];
-      s->params.u.edf.guaranteed_prbs = guaranteed_prbs[i];
-      printf("ADD EDF DL SLICE: id %u, deadline %d, guaranteed_prbs %d\n", s->id, s->params.u.edf.deadline, s->params.u.edf.guaranteed_prbs);
-    } else if (dl_type == SLICE_ALG_SM_V0_EEDF) {
-      s->params.type = SLICE_ALG_SM_V0_EEDF;
-      if (eedf_conf[i] == SLICE_SM_EEDF_V0_STATIC){
-        s->params.u.eedf.conf = SLICE_SM_EEDF_V0_STATIC;
-        s->params.u.eedf.u.fixed.reserved_prbs = eedf_reserved_prbs;
-        if (eedf_static_type[i] == EEDF_STATIC_HARD){
-          s->params.u.eedf.u.fixed.reserved_type = EEDF_STATIC_HARD;
-          printf("ADD EEDF DL SLICE: id %u, conf STATIC, type HARD, reserved_prbs %d\n", s->id, s->params.u.eedf.u.fixed.reserved_prbs);
-        }else if (eedf_static_type[i] == EEDF_STATIC_SOFT){
-          s->params.u.eedf.u.fixed.reserved_type = EEDF_STATIC_SOFT;
-          printf("ADD EEDF DL SLICE: id %u, conf STATIC, type SOFT, reserved_prbs %d\n", s->id, s->params.u.eedf.u.fixed.reserved_prbs);
-        } else {
-          assert(0 != 0 && "Unkown EEDF static type\n");
-        }
-      } else if (eedf_conf[i] == SLICE_SM_EEDF_V0_RATE){
-        s->params.u.eedf.conf = SLICE_SM_EEDF_V0_RATE;
-        s->params.u.eedf.u.rate.guaranteed_rate = eedf_guaranteed_rate;
-        s->params.u.eedf.u.rate.deadline = eedf_deadline;
-        printf("ADD EEDF DL SLICE: id %u, deadline %d, guaranteed_rate %d\n", s->id, s->params.u.eedf.u.rate.deadline, s->params.u.eedf.u.rate.guaranteed_rate);
-      } else {
-        assert(0 != 0 && "Unkown EEDF conf type\n");
-      }
-    } else if (dl_type == SLICE_ALG_SM_V0_PR) {
-      s->params.type = SLICE_ALG_SM_V0_PR;
-      s->params.u.pr.max_ratio = pr_max[i];
-      s->params.u.pr.min_ratio = pr_min[i];
-      s->params.u.pr.dedicated_ratio = pr_ded[i];
-      printf("ADD PR DL SLICE: id %u, max_ratio %d, min_ratio %d, dedicated_ratio %d\n", s->id, s->params.u.pr.max_ratio, s->params.u.pr.min_ratio, s->params.u.pr.dedicated_ratio);
-    } else {
-      assert(0 != 0 && "Unknown type encountered");
-    }
+    s->params.type = SLICE_ALG_SM_V0_PR;
+    s->params.u.pr.max_ratio = pr_max[i];
+    s->params.u.pr.min_ratio = pr_min[i];
+    s->params.u.pr.dedicated_ratio = pr_ded[i];
+    printf("ADD PR DL SLICE: id %u, max_ratio %d, min_ratio %d, dedicated_ratio %d\n", s->id, s->params.u.pr.max_ratio, s->params.u.pr.min_ratio, s->params.u.pr.dedicated_ratio);
   }
 
   uint32_t ul_len_slices = 0;
   uint32_t ul_slice_id[] = {0, 2};
   char* ul_slice_label[] = {"s1", "s2"};
 
-  slice_algorithm_e ul_type = SLICE_ALG_SM_V0_NVS;
+  slice_algorithm_e ul_type = SLICE_ALG_SM_V0_NONE;
   assert(ul_type >= 0);
   if (ul_type != 0)
     ul_len_slices = 2;
@@ -331,20 +242,17 @@ void fill_assoc_ue_slice(ue_slice_conf_t* assoc)
     assert(assoc->ues);
   }
 
-  for(uint32_t i = 0; i < assoc->len_ue_slice; ++i) {
-    /// SET RNTI ///
-    assoc->ues[i].rnti = assoc_rnti; 
-    /// SET DL ID ///
-    assoc->ues[i].dl_id = 2; // dl_id = -1 means UE will not perform DL association
-    if ((int32_t)assoc->ues[i].dl_id != -1){
-      printf("ASSOC DL SLICE: 0x%x, id %u\n", assoc->ues[i].rnti, assoc->ues[i].dl_id);
-    }
-    /// SET UL ID ///
-    assoc->ues[i].ul_id = 2; // ul_id = -1 means UE will not perform UL association
-    if ((int32_t)assoc->ues[i].ul_id != -1){
-      printf("ASSOC UL SLICE: 0x%x, id %u\n", assoc->ues[i].rnti, assoc->ues[i].ul_id); 
-    }
-    
+  /// SET RNTI ///
+  assoc->ues[0].rnti = assoc_rnti;
+  /// SET DL ID ///
+  assoc->ues[0].dl_id = 1; // dl_id = -1 means UE will not perform DL association
+  if ((int32_t)assoc->ues[0].dl_id != -1){
+    printf("ASSOC DL SLICE: 0x%x, id %u\n", assoc->ues[0].rnti, assoc->ues[0].dl_id);
+  }
+  /// SET UL ID ///
+  assoc->ues[0].ul_id = -1; // ul_id = -1 means UE will not perform UL association
+  if ((int32_t)assoc->ues[0].ul_id != -1){
+    printf("ASSOC UL SLICE: 0x%x, id %u\n", assoc->ues[0].rnti, assoc->ues[0].ul_id);
   }
 }
 
@@ -398,71 +306,74 @@ int main(int argc, char *argv[])
   printf("Connected E2 nodes len = %d\n", nodes.len);
 
   // SLICE indication
-  const char* period = "100_ms";
+  const char* inter_t = "1000_ms";
+
+  size_t node_idx = 0;
+  for (size_t j = 0; j < nodes.n[node_idx].len_rf; ++j)
+    printf("Registered ran func id = %d \n ", nodes.n[node_idx].rf[j].id);
+
   sm_ans_xapp_t* slice_handle = NULL;
+  slice_handle = calloc(1, sizeof(sm_ans_xapp_t));
+  assert(slice_handle != NULL);
 
-  if(nodes.len > 0){
-    slice_handle = calloc(nodes.len, sizeof(sm_ans_xapp_t) );
-    assert(slice_handle != NULL);
-  }
+  slice_handle[0] = report_sm_xapp_api(&nodes.n[node_idx].id, SM_SLICE_ID, (void*)inter_t, sm_cb_slice);
+  assert(slice_handle[0].success == true);
+  sleep(5);
 
-  for(size_t i = 0; i < nodes.len; ++i) {
-    e2_node_connected_xapp_t *n = &nodes.n[i];
-    for (size_t j = 0; j < n->len_rf; ++j)
-      printf("Registered ran func id = %d \n ", n->rf[j].id);
+  // Control ADD slice
+  sm_ag_if_wr_t ctrl_msg_add = fill_slice_sm_ctrl_req(SM_SLICE_ID, SLICE_CTRL_SM_V0_ADD);
+  defer({ free_slice_ctrl_msg(&ctrl_msg_add.ctrl.slice_req_ctrl.msg); });
+  control_sm_xapp_api(&nodes.n[node_idx].id, SM_SLICE_ID, &ctrl_msg_add);
 
-    // Question 1
-    // which slicing algorithm are we using?
-    slice_handle[i] = report_sm_xapp_api(&nodes.n[i].id, SM_SLICE_ID, (void*)period, sm_cb_slice);
-    assert(slice_handle[i].success == true);
-    sleep(2);
+  sleep(5);
 
-    while(assoc_rnti == 0) {
-      sleep(1);
+  // Control ASSOC slice
+  sm_ag_if_wr_t ctrl_msg_assoc = fill_slice_sm_ctrl_req(SM_SLICE_ID, SLICE_CTRL_SM_V0_UE_SLICE_ASSOC);
+  defer({ free_slice_ctrl_msg(&ctrl_msg_assoc.ctrl.slice_req_ctrl.msg); });
+  control_sm_xapp_api(&nodes.n[node_idx].id, SM_SLICE_ID, &ctrl_msg_assoc);
+
+  sleep(5);
+
+  size_t pr_list_idx = 0;
+  while(!exit_flag) {
+    // Control ADD slice
+    assert(ctrl_msg_add.ctrl.slice_req_ctrl.msg.type == SLICE_CTRL_SM_V0_ADD);
+    pr_slice_t* pr_slice_0 = &ctrl_msg_add.ctrl.slice_req_ctrl.msg.u.add_mod_slice.dl.slices[0].params.u.pr;
+    pr_slice_t* pr_slice_1 = &ctrl_msg_add.ctrl.slice_req_ctrl.msg.u.add_mod_slice.dl.slices[1].params.u.pr;
+
+    pr_slice_0->max_ratio = pr_slice_0_lst[pr_list_idx];
+    pr_slice_0->min_ratio = pr_slice_0_lst[pr_list_idx];
+    pr_slice_0->dedicated_ratio = pr_slice_0_lst[pr_list_idx];
+    printf("Slice 0 ratio is : %d \n", ctrl_msg_add.ctrl.slice_req_ctrl.msg.u.add_mod_slice.dl.slices[0].params.u.pr.dedicated_ratio);
+
+    pr_slice_1->max_ratio = 100 - pr_slice_0_lst[pr_list_idx];
+    pr_slice_1->min_ratio = 100 - pr_slice_0_lst[pr_list_idx];
+    pr_slice_1->dedicated_ratio = 100 - pr_slice_0_lst[pr_list_idx];
+    printf("Slice 1 ratio is : %d \n", ctrl_msg_add.ctrl.slice_req_ctrl.msg.u.add_mod_slice.dl.slices[1].params.u.pr.dedicated_ratio);
+
+    if (pr_slice_0_lst[pr_list_idx] == 10){
+      pr_list_idx = 0;
+    } else {
+      pr_list_idx += 1;
     }
 
-    // Control ADD slice
-    // Question 2
-    // How many slices are created?
-    sm_ag_if_wr_t ctrl_msg_add = fill_slice_sm_ctrl_req(SM_SLICE_ID, SLICE_CTRL_SM_V0_ADD);
-    control_sm_xapp_api(&nodes.n[i].id, SM_SLICE_ID, &ctrl_msg_add);
-    free_slice_ctrl_msg(&ctrl_msg_add.ctrl.slice_req_ctrl.msg);
-
+    control_sm_xapp_api(&nodes.n[node_idx].id, SM_SLICE_ID, &ctrl_msg_add);
     sleep(5);
 
     // Control ASSOC slice
-    // Question 3
-    // How the UEs are associated with the newly created slices?
-    sm_ag_if_wr_t ctrl_msg_assoc = fill_slice_sm_ctrl_req(SM_SLICE_ID, SLICE_CTRL_SM_V0_UE_SLICE_ASSOC);
-    control_sm_xapp_api(&nodes.n[i].id, SM_SLICE_ID, &ctrl_msg_assoc);
-    free_slice_ctrl_msg(&ctrl_msg_assoc.ctrl.slice_req_ctrl.msg);
-
-    sleep(5);
-
-    // Control DEL slice
-    sm_ag_if_wr_t ctrl_msg_del = fill_slice_sm_ctrl_req(SM_SLICE_ID, SLICE_CTRL_SM_V0_DEL);
-    control_sm_xapp_api(&nodes.n[i].id, SM_SLICE_ID, &ctrl_msg_del);
-    free_slice_ctrl_msg(&ctrl_msg_del.ctrl.slice_req_ctrl.msg);
-
+    assert(ctrl_msg_assoc.ctrl.slice_req_ctrl.msg.type == SLICE_CTRL_SM_V0_UE_SLICE_ASSOC);
+    control_sm_xapp_api(&nodes.n[node_idx].id, SM_SLICE_ID, &ctrl_msg_assoc);
     sleep(5);
   }
 
-  while(!exit_flag) {
-    sleep(1);
-  }
   // Remove the handle previously returned
-  for(int i = 0; i < nodes.len; ++i)
-    rm_report_sm_xapp_api(slice_handle[i].u.handle);
+  rm_report_sm_xapp_api(slice_handle[0].u.handle);
 
-  if(nodes.len > 0){
-    free(slice_handle);
-  }
-
-  sleep(1);
+  free(slice_handle);
 
   //Stop the xApp
   while(try_stop_xapp_api() == false)
-    usleep(1000);
+    poll(NULL, 0, 1000);
 
   printf("Test xApp run SUCCESSFULLY\n");
 }
